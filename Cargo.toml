@@ -1,5 +1,5 @@
 [package]
-name = "arcstr"
+name = "rcstr"
 version = "1.1.4"
 authors = ["Thom Chiovoloni <chiovolonit@gmail.com>"]
 edition = "2018"
@@ -23,6 +23,7 @@ std = []
 default = ["substr"]
 substr = []
 substr-usize-indices = ["substr"]
+arc = []
 
 [dependencies]
 serde = { version = "1", default-features = false, optional = true }

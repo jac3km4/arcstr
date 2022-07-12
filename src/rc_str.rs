@@ -10,7 +10,7 @@ use core::alloc::Layout;
 use core::mem::{align_of, size_of};
 use core::ptr::NonNull;
 #[cfg(not(all(loom, test)))]
-pub(crate) use core::sync::atomic::{AtomicUsize, Ordering};
+pub(crate) use core::sync::atomic::AtomicUsize;
 #[cfg(all(loom, test))]
 pub(crate) use loom::sync::atomic::{AtomicUsize, Ordering};
 
@@ -22,13 +22,13 @@ use alloc::string::String;
 
 /// A better atomically-reference counted string type.
 ///
-/// ## Benefits of `ArcStr` over `Arc<str>`
+/// ## Benefits of `RcStr` over `Rc<str>`
 ///
-/// - It's possible to create a const `ArcStr` from a literal via the
-///   [`arcstr::literal!`][crate::literal] macro. This is probably the killer
+/// - It's possible to create a const `RcStr` from a literal via the
+///   [`rcstr::literal!`][crate::literal] macro. This is probably the killer
 ///   feature, to be honest.
 ///
-///   These "static" `ArcStr`s are zero cost, take no heap allocation, and don't
+///   These "static" `RcStr`s are zero cost, take no heap allocation, and don't
 ///   even need to perform atomic reads/writes when being cloned or dropped (nor
 ///   at any other time).
 ///
@@ -36,18 +36,18 @@ use alloc::string::String;
 ///   be beneficial for performance and memory usage. (In theory your linker may
 ///   even dedupe these for you, but usually not)
 ///
-/// - `ArcStr`s from `arcstr::literal!` can be turned into `&'static str` safely
-///   at any time using [`ArcStr::as_static`]. (This returns an Option, which is
-///   `None` if the `ArcStr` was not static)
+/// - `RcStr`s from `rcstr::literal!` can be turned into `&'static str` safely
+///   at any time using [`RcStr::as_static`]. (This returns an Option, which is
+///   `None` if the `RcStr` was not static)
 ///
 /// - This should be unsurprising given the literal functionality, but
-///   [`ArcStr::new`] is able to be a `const` function.
+///   [`RcStr::new`] is able to be a `const` function.
 ///
-/// - `ArcStr` is thin, e.g. only a single pointer. Great for cases where you
+/// - `RcStr` is thin, e.g. only a single pointer. Great for cases where you
 ///   want to keep the data structure lightweight or need to do some FFI stuff
 ///   with it.
 ///
-/// - `ArcStr` is totally immutable. No need to lose sleep because you're afraid
+/// - `RcStr` is totally immutable. No need to lose sleep because you're afraid
 ///   of code which thinks it has a right to mutate your `Arc`s just because it
 ///   holds the only reference...
 ///
@@ -63,7 +63,7 @@ use alloc::string::String;
 ///
 /// This branch in `clone`/`drop` is not on the result of an atomic load, and is
 /// just a normal memory read. This is actually what allows literal/static
-/// `ArcStr`s to avoid needing to perform any atomic operations in those
+/// `RcStr`s to avoid needing to perform any atomic operations in those
 /// functions, which seems likely more than cover the cost.
 ///
 /// (Additionally, it's almost certain that in the future we'll be able to
@@ -74,66 +74,66 @@ use alloc::string::String;
 ///
 /// ## As a `const`
 ///
-/// The big unique feature of `ArcStr` is the ability to create static/const
-/// `ArcStr`s. (See [the macro](crate::literal) docs or the [feature
+/// The big unique feature of `RcStr` is the ability to create static/const
+/// `RcStr`s. (See [the macro](crate::literal) docs or the [feature
 /// overview][feats]
 ///
 /// [feats]: index.html#feature-overview
 ///
 /// ```
-/// # use arcstr::ArcStr;
-/// const WOW: ArcStr = arcstr::literal!("cool robot!");
+/// # use rcstr::RcStr;
+/// const WOW: RcStr = rcstr::literal!("cool robot!");
 /// assert_eq!(WOW, "cool robot!");
 /// ```
 ///
 /// ## As a `str`
 ///
-/// (This is not unique to `ArcStr`, but is a frequent source of confusion I've
-/// seen): `ArcStr` implements `Deref<Target = str>`, and so all functions and
-/// methods from `str` work on it, even though we don't expose them on `ArcStr`
+/// (This is not unique to `RcStr`, but is a frequent source of confusion I've
+/// seen): `RcStr` implements `Deref<Target = str>`, and so all functions and
+/// methods from `str` work on it, even though we don't expose them on `RcStr`
 /// directly.
 ///
 /// ```
-/// # use arcstr::ArcStr;
-/// let s = ArcStr::from("something");
+/// # use rcstr::RcStr;
+/// let s = RcStr::from("something");
 /// // These go through `Deref`, so they work even though
-/// // there is no `ArcStr::eq_ignore_ascii_case` function
+/// // there is no `RcStr::eq_ignore_ascii_case` function
 /// assert!(s.eq_ignore_ascii_case("SOMETHING"));
 /// ```
 ///
-/// Additionally, `&ArcStr` can be passed to any function which accepts `&str`.
+/// Additionally, `&RcStr` can be passed to any function which accepts `&str`.
 /// For example:
 ///
 /// ```
-/// # use arcstr::ArcStr;
+/// # use rcstr::RcStr;
 /// fn accepts_str(s: &str) {
 ///    # let _ = s;
 ///     // s...
 /// }
 ///
-/// let test_str: ArcStr = "test".into();
-/// // This works even though `&test_str` is normally an `&ArcStr`
+/// let test_str: RcStr = "test".into();
+/// // This works even though `&test_str` is normally an `&RcStr`
 /// accepts_str(&test_str);
 ///
 /// // Of course, this works for functionality from the standard library as well.
-/// let test_but_loud = ArcStr::from("TEST");
+/// let test_but_loud = RcStr::from("TEST");
 /// assert!(test_str.eq_ignore_ascii_case(&test_but_loud));
 /// ```
 
 #[repr(transparent)]
-pub struct ArcStr(NonNull<ThinInner>);
+pub struct RcStr(NonNull<ThinInner>);
 
-unsafe impl Sync for ArcStr {}
-unsafe impl Send for ArcStr {}
+unsafe impl Sync for RcStr {}
+unsafe impl Send for RcStr {}
 
-impl ArcStr {
+impl RcStr {
     /// Construct a new empty string.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use arcstr::ArcStr;
-    /// let s = ArcStr::new();
+    /// # use rcstr::RcStr;
+    /// let s = RcStr::new();
     /// assert_eq!(s, "");
     /// ```
     #[inline]
@@ -141,18 +141,18 @@ impl ArcStr {
         EMPTY
     }
 
-    /// Attempt to copy the provided string into a newly allocated `ArcStr`, but
+    /// Attempt to copy the provided string into a newly allocated `RcStr`, but
     /// return `None` if we cannot allocate the required memory.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use arcstr::ArcStr;
+    /// # use rcstr::RcStr;
     ///
-    /// # fn do_stuff_with(s: ArcStr) {}
+    /// # fn do_stuff_with(s: RcStr) {}
     ///
     /// let some_big_str = "please pretend this is a very long string";
-    /// if let Some(s) = ArcStr::try_alloc(some_big_str) {
+    /// if let Some(s) = RcStr::try_alloc(some_big_str) {
     ///     do_stuff_with(s);
     /// } else {
     ///     // Complain about allocation failure, somehow.
@@ -176,8 +176,8 @@ impl ArcStr {
     /// # Examples
     // TODO: find a better example where `&*` would have been required.
     /// ```
-    /// # use arcstr::ArcStr;
-    /// let s = ArcStr::from("abc");
+    /// # use rcstr::RcStr;
+    /// let s = RcStr::from("abc");
     /// assert_eq!(s.as_str(), "abc");
     /// ```
     #[inline]
@@ -185,13 +185,13 @@ impl ArcStr {
         self
     }
 
-    /// Returns the length of this `ArcStr` in bytes.
+    /// Returns the length of this `RcStr` in bytes.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use arcstr::ArcStr;
-    /// let a = ArcStr::from("foo");
+    /// # use rcstr::RcStr;
+    /// let a = RcStr::from("foo");
     /// assert_eq!(a.len(), 3);
     /// ```
     #[inline]
@@ -199,14 +199,14 @@ impl ArcStr {
         unsafe { ThinInner::get_len_flags(self.0.as_ptr()).len() }
     }
 
-    /// Returns true if this `ArcStr` is empty.
+    /// Returns true if this `RcStr` is empty.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use arcstr::ArcStr;
-    /// assert!(!ArcStr::from("foo").is_empty());
-    /// assert!(ArcStr::new().is_empty());
+    /// # use rcstr::RcStr;
+    /// assert!(!RcStr::from("foo").is_empty());
+    /// assert!(RcStr::new().is_empty());
     /// ```
     #[inline]
     pub fn is_empty(&self) -> bool {
@@ -221,8 +221,8 @@ impl ArcStr {
     /// # Examples
     ///
     /// ```
-    /// # use arcstr::ArcStr;
-    /// let s = ArcStr::from("abc");
+    /// # use rcstr::RcStr;
+    /// let s = RcStr::from("abc");
     /// assert_eq!(s.to_string(), "abc");
     /// ```
     #[inline]
@@ -238,8 +238,8 @@ impl ArcStr {
     /// # Examples
     ///
     /// ```
-    /// # use arcstr::ArcStr;
-    /// let foobar = ArcStr::from("foobar");
+    /// # use rcstr::RcStr;
+    /// let foobar = RcStr::from("foobar");
     /// assert_eq!(foobar.as_bytes(), b"foobar");
     /// ```
     #[inline]
@@ -256,7 +256,7 @@ impl ArcStr {
         }
     }
 
-    /// Return the raw pointer this `ArcStr` wraps, for advanced use cases.
+    /// Return the raw pointer this `RcStr` wraps, for advanced use cases.
     ///
     /// Note that in addition to the `NonNull` constraint expressed in the type
     /// signature, we also guarantee the pointer has an alignment of at least 8
@@ -265,11 +265,11 @@ impl ArcStr {
     /// # Examples
     ///
     /// ```
-    /// # use arcstr::ArcStr;
-    /// let s = ArcStr::from("abcd");
-    /// let p = ArcStr::into_raw(s);
+    /// # use rcstr::RcStr;
+    /// let s = RcStr::from("abcd");
+    /// let p = RcStr::into_raw(s);
     /// // Some time later...
-    /// let s = unsafe { ArcStr::from_raw(p) };
+    /// let s = unsafe { RcStr::from_raw(p) };
     /// assert_eq!(s, "abcd");
     /// ```
     #[inline]
@@ -285,17 +285,17 @@ impl ArcStr {
     /// # Safety
     ///
     /// This function must be used on a valid pointer returned from
-    /// [`ArcStr::into_raw`]. Additionally, you must ensure that a given `ArcStr`
+    /// [`RcStr::into_raw`]. Additionally, you must ensure that a given `RcStr`
     /// instance is only dropped once.
     ///
     /// # Examples
     ///
     /// ```
-    /// # use arcstr::ArcStr;
-    /// let s = ArcStr::from("abcd");
-    /// let p = ArcStr::into_raw(s);
+    /// # use rcstr::RcStr;
+    /// let s = RcStr::from("abcd");
+    /// let p = RcStr::into_raw(s);
     /// // Some time later...
-    /// let s = unsafe { ArcStr::from_raw(p) };
+    /// let s = unsafe { RcStr::from_raw(p) };
     /// assert_eq!(s, "abcd");
     /// ```
     #[inline]
@@ -303,47 +303,47 @@ impl ArcStr {
         Self(ptr.cast())
     }
 
-    /// Returns true if the two `ArcStr`s point to the same allocation.
+    /// Returns true if the two `RcStr`s point to the same allocation.
     ///
     /// Note that functions like `PartialEq` check this already, so there's
-    /// no performance benefit to doing something like `ArcStr::ptr_eq(&a1, &a2) || (a1 == a2)`.
+    /// no performance benefit to doing something like `RcStr::ptr_eq(&a1, &a2) || (a1 == a2)`.
     ///
     /// Caveat: `const`s aren't guaranteed to only occur in an executable a
-    /// single time, and so this may be non-deterministic for `ArcStr` defined
-    /// in a `const` with [`arcstr::literal!`][crate::literal], unless one
+    /// single time, and so this may be non-deterministic for `RcStr` defined
+    /// in a `const` with [`rcstr::literal!`][crate::literal], unless one
     /// was created by a `clone()` on the other.
     ///
     /// # Examples
     ///
     /// ```
-    /// use arcstr::ArcStr;
+    /// use rcstr::RcStr;
     ///
-    /// let foobar = ArcStr::from("foobar");
+    /// let foobar = RcStr::from("foobar");
     /// let same_foobar = foobar.clone();
-    /// let other_foobar = ArcStr::from("foobar");
-    /// assert!(ArcStr::ptr_eq(&foobar, &same_foobar));
-    /// assert!(!ArcStr::ptr_eq(&foobar, &other_foobar));
+    /// let other_foobar = RcStr::from("foobar");
+    /// assert!(RcStr::ptr_eq(&foobar, &same_foobar));
+    /// assert!(!RcStr::ptr_eq(&foobar, &other_foobar));
     ///
-    /// const YET_AGAIN_A_DIFFERENT_FOOBAR: ArcStr = arcstr::literal!("foobar");
+    /// const YET_AGAIN_A_DIFFERENT_FOOBAR: RcStr = rcstr::literal!("foobar");
     /// let strange_new_foobar = YET_AGAIN_A_DIFFERENT_FOOBAR.clone();
     /// let wild_blue_foobar = strange_new_foobar.clone();
-    /// assert!(ArcStr::ptr_eq(&strange_new_foobar, &wild_blue_foobar));
+    /// assert!(RcStr::ptr_eq(&strange_new_foobar, &wild_blue_foobar));
     /// ```
     #[inline]
     pub fn ptr_eq(lhs: &Self, rhs: &Self) -> bool {
         core::ptr::eq(lhs.0.as_ptr(), rhs.0.as_ptr())
     }
 
-    /// Returns the number of references that exist to this `ArcStr`. If this is
-    /// a static `ArcStr` (For example, one from
-    /// [`arcstr::literal!`][crate::literal]), returns `None`.
+    /// Returns the number of references that exist to this `RcStr`. If this is
+    /// a static `RcStr` (For example, one from
+    /// [`rcstr::literal!`][crate::literal]), returns `None`.
     ///
     /// Despite the difference in return type, this is named to match the method
     /// from the stdlib's Arc:
     /// [`Arc::strong_count`][alloc::sync::Arc::strong_count].
     ///
-    /// If you aren't sure how to handle static `ArcStr` in the context of this
-    /// return value, `ArcStr::strong_count(&s).unwrap_or(usize::MAX)` is
+    /// If you aren't sure how to handle static `RcStr` in the context of this
+    /// return value, `RcStr::strong_count(&s).unwrap_or(usize::MAX)` is
     /// frequently reasonable.
     ///
     /// # Safety
@@ -353,28 +353,28 @@ impl ArcStr {
     /// potentially between calling this method and acting on the result.
     ///
     /// However, it may never change from `None` to `Some` or from `Some` to
-    /// `None` for a given `ArcStr` — whether or not it is static is determined
+    /// `None` for a given `RcStr` — whether or not it is static is determined
     /// at construction, and never changes.
     ///
     /// # Examples
     ///
-    /// ### Dynamic ArcStr
+    /// ### Dynamic RcStr
     /// ```
-    /// # use arcstr::ArcStr;
-    /// let foobar = ArcStr::from("foobar");
-    /// assert_eq!(Some(1), ArcStr::strong_count(&foobar));
-    /// let also_foobar = ArcStr::clone(&foobar);
-    /// assert_eq!(Some(2), ArcStr::strong_count(&foobar));
-    /// assert_eq!(Some(2), ArcStr::strong_count(&also_foobar));
+    /// # use rcstr::RcStr;
+    /// let foobar = RcStr::from("foobar");
+    /// assert_eq!(Some(1), RcStr::strong_count(&foobar));
+    /// let also_foobar = RcStr::clone(&foobar);
+    /// assert_eq!(Some(2), RcStr::strong_count(&foobar));
+    /// assert_eq!(Some(2), RcStr::strong_count(&also_foobar));
     /// ```
     ///
-    /// ### Static ArcStr
+    /// ### Static RcStr
     /// ```
-    /// # use arcstr::ArcStr;
-    /// let baz = arcstr::literal!("baz");
-    /// assert_eq!(None, ArcStr::strong_count(&baz));
+    /// # use rcstr::RcStr;
+    /// let baz = rcstr::literal!("baz");
+    /// assert_eq!(None, RcStr::strong_count(&baz));
     /// // Similarly:
-    /// assert_eq!(None, ArcStr::strong_count(&ArcStr::default()));
+    /// assert_eq!(None, RcStr::strong_count(&RcStr::default()));
     /// ```
     #[inline]
     pub fn strong_count(this: &Self) -> Option<usize> {
@@ -382,64 +382,71 @@ impl ArcStr {
         if unsafe { ThinInner::get_len_flags(this).is_static() } {
             None
         } else {
-            unsafe { Some((*this).strong.load(Ordering::SeqCst)) }
+            #[cfg(feature = "arc")]
+            unsafe {
+                Some((*this).strong.load(core::sync::atomic::Ordering::SeqCst))
+            }
+            #[cfg(not(feature = "arc"))]
+            unsafe {
+                Some((*this).strong.get())
+            }
         }
     }
 
-    /// Returns true if `this` is a "static" ArcStr. For example, if it was
-    /// created from a call to [`arcstr::literal!`][crate::literal]),
-    /// returned by `ArcStr::new`, etc.
+    /// Returns true if `this` is a "static" RcStr. For example, if it was
+    /// created from a call to [`rcstr::literal!`][crate::literal]),
+    /// returned by `RcStr::new`, etc.
     ///
-    /// Static `ArcStr`s can be converted to `&'static str` for free using
-    /// [`ArcStr::as_static`], without leaking memory — they're static constants
+    /// Static `RcStr`s can be converted to `&'static str` for free using
+    /// [`RcStr::as_static`], without leaking memory — they're static constants
     /// in the program (somewhere).
     ///
     /// # Examples
     ///
     /// ```
-    /// # use arcstr::ArcStr;
-    /// const STATIC: ArcStr = arcstr::literal!("Electricity!");
-    /// assert!(ArcStr::is_static(&STATIC));
+    /// # use rcstr::RcStr;
+    /// const STATIC: RcStr = rcstr::literal!("Electricity!");
+    /// assert!(RcStr::is_static(&STATIC));
     ///
-    /// let still_static = arcstr::literal!("Shocking!");
-    /// assert!(ArcStr::is_static(&still_static));
+    /// let still_static = rcstr::literal!("Shocking!");
+    /// assert!(RcStr::is_static(&still_static));
     /// assert!(
-    ///     ArcStr::is_static(&still_static.clone()),
+    ///     RcStr::is_static(&still_static.clone()),
     ///     "Cloned statics are still static"
     /// );
     ///
-    /// let nonstatic = ArcStr::from("Grounded...");
-    /// assert!(!ArcStr::is_static(&nonstatic));
+    /// let nonstatic = RcStr::from("Grounded...");
+    /// assert!(!RcStr::is_static(&nonstatic));
     /// ```
     #[inline]
     pub fn is_static(this: &Self) -> bool {
         unsafe { ThinInner::get_len_flags(this.0.as_ptr()).is_static() }
     }
 
-    /// Returns true if `this` is a "static"/`"literal"` ArcStr. For example, if
+    /// Returns true if `this` is a "static"/`"literal"` RcStr. For example, if
     /// it was created from a call to [`literal!`][crate::literal]), returned by
-    /// `ArcStr::new`, etc.
+    /// `RcStr::new`, etc.
     ///
-    /// Static `ArcStr`s can be converted to `&'static str` for free using
-    /// [`ArcStr::as_static`], without leaking memory — they're static constants
+    /// Static `RcStr`s can be converted to `&'static str` for free using
+    /// [`RcStr::as_static`], without leaking memory — they're static constants
     /// in the program (somewhere).
     ///
     /// # Examples
     ///
     /// ```
-    /// # use arcstr::ArcStr;
-    /// const STATIC: ArcStr = arcstr::literal!("Electricity!");
-    /// assert_eq!(ArcStr::as_static(&STATIC), Some("Electricity!"));
+    /// # use rcstr::RcStr;
+    /// const STATIC: RcStr = rcstr::literal!("Electricity!");
+    /// assert_eq!(RcStr::as_static(&STATIC), Some("Electricity!"));
     ///
     /// // Note that they don't have to be consts, just made using `literal!`:
-    /// let still_static = arcstr::literal!("Shocking!");
-    /// assert_eq!(ArcStr::as_static(&still_static), Some("Shocking!"));
+    /// let still_static = rcstr::literal!("Shocking!");
+    /// assert_eq!(RcStr::as_static(&still_static), Some("Shocking!"));
     /// // Cloning a static still produces a static.
-    /// assert_eq!(ArcStr::as_static(&still_static.clone()), Some("Shocking!"));
+    /// assert_eq!(RcStr::as_static(&still_static.clone()), Some("Shocking!"));
     ///
     /// // But it won't work for strings from other sources.
-    /// let nonstatic = ArcStr::from("Grounded...");
-    /// assert_eq!(ArcStr::as_static(&nonstatic), None);
+    /// let nonstatic = RcStr::from("Grounded...");
+    /// assert_eq!(RcStr::as_static(&nonstatic), None);
     /// ```
     #[inline]
     pub fn as_static(this: &Self) -> Option<&'static str> {
@@ -451,7 +458,7 @@ impl ArcStr {
         }
     }
 
-    // Not public API. Exists so the `arcstr::literal` macro can call it.
+    // Not public API. Exists so the `rcstr::literal` macro can call it.
     #[inline]
     #[doc(hidden)]
     pub const unsafe fn _private_new_from_static_data<B>(
@@ -465,9 +472,9 @@ impl ArcStr {
     /// # Examples
     ///
     /// ```
-    /// use arcstr::{ArcStr, Substr};
+    /// use rcstr::{RcStr, Substr};
     ///
-    /// let a = ArcStr::from("abcde");
+    /// let a = RcStr::from("abcde");
     /// let b: Substr = a.substr(2..);
     ///
     /// assert_eq!(b, "cde");
@@ -489,23 +496,23 @@ impl ArcStr {
     /// `feature = "substr"` Returns a [`Substr`] of self over the given `&str`.
     ///
     /// It is not rare to end up with a `&str` which holds a view into a
-    /// `ArcStr`'s backing data. A common case is when using functionality that
-    /// takes and returns `&str` and are entirely unaware of `arcstr`, for
+    /// `RcStr`'s backing data. A common case is when using functionality that
+    /// takes and returns `&str` and are entirely unaware of `rcstr`, for
     /// example: `str::trim()`.
     ///
     /// This function allows you to reconstruct a [`Substr`] from a `&str` which
-    /// is a view into this `ArcStr`'s backing string.
+    /// is a view into this `RcStr`'s backing string.
     ///
     /// # Examples
     ///
     /// ```
-    /// use arcstr::{ArcStr, Substr};
-    /// let text = ArcStr::from("   abc");
+    /// use rcstr::{RcStr, Substr};
+    /// let text = RcStr::from("   abc");
     /// let trimmed = text.trim();
     /// let substr: Substr = text.substr_from(trimmed);
     /// assert_eq!(substr, "abc");
     /// // for illustration
-    /// assert!(ArcStr::ptr_eq(substr.parent(), &text));
+    /// assert!(RcStr::ptr_eq(substr.parent(), &text));
     /// assert_eq!(substr.range(), 3..6);
     /// ```
     ///
@@ -539,21 +546,21 @@ impl ArcStr {
     /// `feature = "substr"` If possible, returns a [`Substr`] of self over the
     /// given `&str`.
     ///
-    /// This is a fallible version of [`ArcStr::substr_from`].
+    /// This is a fallible version of [`RcStr::substr_from`].
     ///
     /// It is not rare to end up with a `&str` which holds a view into a
-    /// `ArcStr`'s backing data. A common case is when using functionality that
-    /// takes and returns `&str` and are entirely unaware of `arcstr`, for
+    /// `RcStr`'s backing data. A common case is when using functionality that
+    /// takes and returns `&str` and are entirely unaware of `rcstr`, for
     /// example: `str::trim()`.
     ///
     /// This function allows you to reconstruct a [`Substr`] from a `&str` which
-    /// is a view into this `ArcStr`'s backing string.
+    /// is a view into this `RcStr`'s backing string.
     ///
     /// # Examples
     ///
     /// ```
-    /// use arcstr::{ArcStr, Substr};
-    /// let text = ArcStr::from("   abc");
+    /// use rcstr::{RcStr, Substr};
+    /// let text = RcStr::from("   abc");
     /// let trimmed = text.trim();
     /// let substr: Option<Substr> = text.try_substr_from(trimmed);
     /// assert_eq!(substr.unwrap(), "abc");
@@ -593,15 +600,15 @@ impl ArcStr {
     ///
     /// The function may return either a derived string, or any empty string.
     ///
-    /// This function is mainly a wrapper around [`ArcStr::try_substr_from`]. If
-    /// you're coming to `arcstr` from the `shared_string` crate, this is the
+    /// This function is mainly a wrapper around [`RcStr::try_substr_from`]. If
+    /// you're coming to `rcstr` from the `shared_string` crate, this is the
     /// moral equivalent of the `slice_with` function.
     ///
     /// # Examples
     ///
     /// ```
-    /// use arcstr::{ArcStr, Substr};
-    /// let text = ArcStr::from("   abc");
+    /// use rcstr::{RcStr, Substr};
+    /// let text = RcStr::from("   abc");
     /// let trimmed: Option<Substr> = text.try_substr_using(str::trim);
     /// assert_eq!(trimmed.unwrap(), "abc");
     /// let other = text.try_substr_using(|_s| "different string!");
@@ -621,16 +628,16 @@ impl ArcStr {
     /// The function may return either a derived string, or any empty string.
     /// Returning anything else will result in a panic.
     ///
-    /// This function is mainly a wrapper around [`ArcStr::try_substr_from`]. If
-    /// you're coming to `arcstr` from the `shared_string` crate, this is the
+    /// This function is mainly a wrapper around [`RcStr::try_substr_from`]. If
+    /// you're coming to `rcstr` from the `shared_string` crate, this is the
     /// likely closest to the `slice_with_unchecked` function, but this panics
     /// instead of UB on dodginess.
     ///
     /// # Examples
     ///
     /// ```
-    /// use arcstr::{ArcStr, Substr};
-    /// let text = ArcStr::from("   abc");
+    /// use rcstr::{RcStr, Substr};
+    /// let text = RcStr::from("   abc");
     /// let trimmed: Substr = text.substr_using(str::trim);
     /// assert_eq!(trimmed, "abc");
     /// // As a special case, this is allowed.
@@ -646,13 +653,13 @@ impl ArcStr {
 #[cold]
 #[inline(never)]
 #[cfg(feature = "substr")]
-fn out_of_range(arc: &ArcStr, substr: &&str) -> ! {
+fn out_of_range(arc: &RcStr, substr: &&str) -> ! {
     let arc_start = arc.as_ptr() as usize;
     let arc_end = arc_start + arc.len();
     let substr_start = substr.as_ptr() as usize;
     let substr_end = substr_start + substr.len();
     panic!(
-        "ArcStr over ({:p}..{:p}) does not contain substr over ({:p}..{:p})",
+        "RcStr over ({:p}..{:p}) does not contain substr over ({:p}..{:p})",
         arc_start as *const u8,
         arc_end as *const u8,
         substr_start as *const u8,
@@ -660,7 +667,7 @@ fn out_of_range(arc: &ArcStr, substr: &&str) -> ! {
     )
 }
 
-impl Clone for ArcStr {
+impl Clone for RcStr {
     #[inline]
     fn clone(&self) -> Self {
         let this = self.0.as_ptr();
@@ -674,7 +681,16 @@ impl Clone for ArcStr {
                 // > the object.
                 //
                 // See: https://doc.rust-lang.org/src/alloc/sync.rs.html#1073
-                let n = (*this).strong.fetch_add(1, Ordering::Relaxed);
+                #[cfg(feature = "arc")]
+                let n = (*this)
+                    .strong
+                    .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+                #[cfg(not(feature = "arc"))]
+                let n = {
+                    let n = (*this).strong.get().wrapping_add(1);
+                    (*this).strong.set(n);
+                    n
+                };
                 // Protect against aggressive leaking of Arcs causing us to overflow `strong`.
                 if n > (isize::MAX as usize) {
                     abort();
@@ -685,7 +701,7 @@ impl Clone for ArcStr {
     }
 }
 
-impl Drop for ArcStr {
+impl Drop for RcStr {
     #[inline]
     fn drop(&mut self) {
         let this = self.0.as_ptr();
@@ -693,7 +709,12 @@ impl Drop for ArcStr {
             if ThinInner::get_len_flags(this).is_static() {
                 return;
             }
-            if (*this).strong.fetch_sub(1, Ordering::Release) == 1 {
+            #[cfg(feature = "arc")]
+            if (*this)
+                .strong
+                .fetch_sub(1, core::sync::atomic::Ordering::Release)
+                == 1
+            {
                 // `libstd` uses a full acquire fence here but notes that it's
                 // possibly overkill. `triomphe`/`servo_arc` some of firefox ref
                 // counting uses a load like this.
@@ -718,8 +739,15 @@ impl Drop for ArcStr {
                 // easier auditing and such... an because I'm not 100% sure that
                 // changing the ordering here wouldn't require changing it for
                 // the fetch_sub above, or the fetch_add in `clone`...
-                let _ = (*this).strong.load(Ordering::Acquire);
+                let _ = (*this).strong.load(core::sync::atomic::Ordering::Acquire);
                 ThinInner::destroy_cold(this)
+            }
+            #[cfg(not(feature = "arc"))]
+            {
+                let strong = (*this).strong.get();
+                if strong == 1 {
+                    ThinInner::destroy_cold(this)
+                }
             }
         }
     }
@@ -728,7 +756,7 @@ impl Drop for ArcStr {
 // located in static data (as with empty string). is_static being false meanse
 // we are a normal arc-ed string.
 //
-// While `ArcStr` claims to hold a pointer to a `ThinInner`, for the static case
+// While `RcStr` claims to hold a pointer to a `ThinInner`, for the static case
 // we actually are using a pointer to a `StaticArcStrInner<[u8; N]>`. These have
 // almost identical layouts, except the static contains a explicit trailing
 // array, and does not have a `AtomicUsize` The issue is: We kind of want the
@@ -752,7 +780,10 @@ impl Drop for ArcStr {
 struct ThinInner {
     len_flags: LenFlags,
     // kind of a misnomer since there are no weak refs rn. XXX ever?
+    #[cfg(feature = "arc")]
     strong: AtomicUsize,
+    #[cfg(not(feature = "arc"))]
+    strong: core::cell::Cell<usize>,
     data: [u8; 0],
 }
 
@@ -810,7 +841,7 @@ impl LenFlags {
     }
 }
 
-const EMPTY: ArcStr = literal!("");
+const EMPTY: RcStr = literal!("");
 
 impl ThinInner {
     fn allocate(data: &str) -> NonNull<Self> {
@@ -851,7 +882,10 @@ impl ThinInner {
             debug_assert!(!lf.is_static());
 
             core::ptr::write(&mut (*ptr).len_flags, lf);
+            #[cfg(feature = "arc")]
             core::ptr::write(&mut (*ptr).strong, AtomicUsize::new(1));
+            #[cfg(not(feature = "arc"))]
+            core::ptr::write(&mut (*ptr).strong, core::cell::Cell::new(1));
 
             debug_assert_eq!(
                 (alloced as *const u8).wrapping_add(mo),
@@ -890,7 +924,7 @@ fn alloc_overflow() -> ! {
     panic!("overflow during Layout computation")
 }
 
-impl From<&str> for ArcStr {
+impl From<&str> for RcStr {
     #[inline]
     fn from(s: &str) -> Self {
         if s.is_empty() {
@@ -901,7 +935,7 @@ impl From<&str> for ArcStr {
     }
 }
 
-impl core::ops::Deref for ArcStr {
+impl core::ops::Deref for RcStr {
     type Target = str;
     #[inline]
     fn deref(&self) -> &str {
@@ -909,21 +943,21 @@ impl core::ops::Deref for ArcStr {
     }
 }
 
-impl Default for ArcStr {
+impl Default for RcStr {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl From<String> for ArcStr {
+impl From<String> for RcStr {
     #[inline]
     fn from(v: String) -> Self {
         v.as_str().into()
     }
 }
 
-impl From<&mut str> for ArcStr {
+impl From<&mut str> for RcStr {
     #[inline]
     fn from(s: &mut str) -> Self {
         let s: &str = s;
@@ -931,62 +965,62 @@ impl From<&mut str> for ArcStr {
     }
 }
 
-impl From<Box<str>> for ArcStr {
+impl From<Box<str>> for RcStr {
     #[inline]
     fn from(s: Box<str>) -> Self {
         Self::from(&s[..])
     }
 }
-impl From<ArcStr> for Box<str> {
+impl From<RcStr> for Box<str> {
     #[inline]
-    fn from(s: ArcStr) -> Self {
+    fn from(s: RcStr) -> Self {
         s.as_str().into()
     }
 }
-impl From<ArcStr> for alloc::rc::Rc<str> {
+impl From<RcStr> for alloc::rc::Rc<str> {
     #[inline]
-    fn from(s: ArcStr) -> Self {
+    fn from(s: RcStr) -> Self {
         s.as_str().into()
     }
 }
-impl From<ArcStr> for alloc::sync::Arc<str> {
+impl From<RcStr> for alloc::sync::Arc<str> {
     #[inline]
-    fn from(s: ArcStr) -> Self {
+    fn from(s: RcStr) -> Self {
         s.as_str().into()
     }
 }
-impl From<alloc::rc::Rc<str>> for ArcStr {
+impl From<alloc::rc::Rc<str>> for RcStr {
     #[inline]
     fn from(s: alloc::rc::Rc<str>) -> Self {
         let s: &str = &*s;
         Self::from(s)
     }
 }
-impl From<alloc::sync::Arc<str>> for ArcStr {
+impl From<alloc::sync::Arc<str>> for RcStr {
     #[inline]
     fn from(s: alloc::sync::Arc<str>) -> Self {
         let s: &str = &*s;
         Self::from(s)
     }
 }
-impl<'a> From<Cow<'a, str>> for ArcStr {
+impl<'a> From<Cow<'a, str>> for RcStr {
     #[inline]
     fn from(s: Cow<'a, str>) -> Self {
         let s: &str = &*s;
         Self::from(s)
     }
 }
-impl<'a> From<&'a ArcStr> for Cow<'a, str> {
+impl<'a> From<&'a RcStr> for Cow<'a, str> {
     #[inline]
-    fn from(s: &'a ArcStr) -> Self {
+    fn from(s: &'a RcStr) -> Self {
         Cow::Borrowed(s)
     }
 }
 
-impl<'a> From<ArcStr> for Cow<'a, str> {
+impl<'a> From<RcStr> for Cow<'a, str> {
     #[inline]
-    fn from(s: ArcStr) -> Self {
-        if let Some(st) = ArcStr::as_static(&s) {
+    fn from(s: RcStr) -> Self {
+        if let Some(st) = RcStr::as_static(&s) {
             Cow::Borrowed(st)
         } else {
             Cow::Owned(s.to_string())
@@ -994,45 +1028,45 @@ impl<'a> From<ArcStr> for Cow<'a, str> {
     }
 }
 
-impl From<&String> for ArcStr {
+impl From<&String> for RcStr {
     #[inline]
     fn from(s: &String) -> Self {
         Self::from(s.as_str())
     }
 }
-impl From<&ArcStr> for ArcStr {
+impl From<&RcStr> for RcStr {
     #[inline]
-    fn from(s: &ArcStr) -> Self {
+    fn from(s: &RcStr) -> Self {
         s.clone()
     }
 }
 
-impl core::fmt::Debug for ArcStr {
+impl core::fmt::Debug for RcStr {
     #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         core::fmt::Debug::fmt(self.as_str(), f)
     }
 }
 
-impl core::fmt::Display for ArcStr {
+impl core::fmt::Display for RcStr {
     #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         core::fmt::Display::fmt(self.as_str(), f)
     }
 }
 
-impl PartialEq for ArcStr {
+impl PartialEq for RcStr {
     #[inline]
     fn eq(&self, o: &Self) -> bool {
-        ArcStr::ptr_eq(self, o) || PartialEq::eq(self.as_str(), o.as_str())
+        RcStr::ptr_eq(self, o) || PartialEq::eq(self.as_str(), o.as_str())
     }
     #[inline]
     fn ne(&self, o: &Self) -> bool {
-        !ArcStr::ptr_eq(self, o) && PartialEq::ne(self.as_str(), o.as_str())
+        !RcStr::ptr_eq(self, o) && PartialEq::ne(self.as_str(), o.as_str())
     }
 }
 
-impl Eq for ArcStr {}
+impl Eq for RcStr {}
 
 macro_rules! impl_peq {
     (@one $a:ty, $b:ty) => {
@@ -1055,32 +1089,32 @@ macro_rules! impl_peq {
 }
 
 impl_peq! {
-    (ArcStr, str),
-    (ArcStr, &'a str),
-    (ArcStr, String),
-    (ArcStr, Cow<'a, str>),
-    (ArcStr, Box<str>),
-    (ArcStr, alloc::sync::Arc<str>),
-    (ArcStr, alloc::rc::Rc<str>),
-    (ArcStr, alloc::sync::Arc<String>),
-    (ArcStr, alloc::rc::Rc<String>),
+    (RcStr, str),
+    (RcStr, &'a str),
+    (RcStr, String),
+    (RcStr, Cow<'a, str>),
+    (RcStr, Box<str>),
+    (RcStr, alloc::sync::Arc<str>),
+    (RcStr, alloc::rc::Rc<str>),
+    (RcStr, alloc::sync::Arc<String>),
+    (RcStr, alloc::rc::Rc<String>),
 }
 
-impl PartialOrd for ArcStr {
+impl PartialOrd for RcStr {
     #[inline]
     fn partial_cmp(&self, s: &Self) -> Option<core::cmp::Ordering> {
         Some(self.as_str().cmp(s.as_str()))
     }
 }
 
-impl Ord for ArcStr {
+impl Ord for RcStr {
     #[inline]
     fn cmp(&self, s: &Self) -> core::cmp::Ordering {
         self.as_str().cmp(s.as_str())
     }
 }
 
-impl core::hash::Hash for ArcStr {
+impl core::hash::Hash for RcStr {
     #[inline]
     fn hash<H: core::hash::Hasher>(&self, h: &mut H) {
         self.as_str().hash(h)
@@ -1089,7 +1123,7 @@ impl core::hash::Hash for ArcStr {
 
 macro_rules! impl_index {
     ($($IdxT:ty,)*) => {$(
-        impl core::ops::Index<$IdxT> for ArcStr {
+        impl core::ops::Index<$IdxT> for RcStr {
             type Output = str;
             #[inline]
             fn index(&self, i: $IdxT) -> &Self::Output {
@@ -1108,28 +1142,28 @@ impl_index! {
     core::ops::RangeToInclusive<usize>,
 }
 
-impl AsRef<str> for ArcStr {
+impl AsRef<str> for RcStr {
     #[inline]
     fn as_ref(&self) -> &str {
         self
     }
 }
 
-impl AsRef<[u8]> for ArcStr {
+impl AsRef<[u8]> for RcStr {
     #[inline]
     fn as_ref(&self) -> &[u8] {
         self.as_bytes()
     }
 }
 
-impl core::borrow::Borrow<str> for ArcStr {
+impl core::borrow::Borrow<str> for RcStr {
     #[inline]
     fn borrow(&self) -> &str {
         self
     }
 }
 
-impl core::str::FromStr for ArcStr {
+impl core::str::FromStr for RcStr {
     type Err = core::convert::Infallible;
     #[inline]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -1212,24 +1246,24 @@ mod test {
 
 #[cfg(all(test, loom))]
 mod loomtest {
-    use super::ArcStr;
+    use super::RcStr;
     use loom::sync::Arc;
     use loom::thread;
     #[test]
     fn cloning_threads() {
         loom::model(|| {
-            let a = ArcStr::from("abcdefgh");
+            let a = RcStr::from("abcdefgh");
             let addr = a.as_ptr() as usize;
 
             let a1 = Arc::new(a);
             let a2 = a1.clone();
 
             let t1 = thread::spawn(move || {
-                let b: ArcStr = (*a1).clone();
+                let b: RcStr = (*a1).clone();
                 assert_eq!(b.as_ptr() as usize, addr);
             });
             let t2 = thread::spawn(move || {
-                let b: ArcStr = (*a2).clone();
+                let b: RcStr = (*a2).clone();
                 assert_eq!(b.as_ptr() as usize, addr);
             });
 
@@ -1241,7 +1275,7 @@ mod loomtest {
     fn drop_timing() {
         loom::model(|| {
             let a1 = (0..5)
-                .map(|i| ArcStr::from(alloc::format!("s{}", i)))
+                .map(|i| RcStr::from(alloc::format!("s{}", i)))
                 .cycle()
                 .take(10)
                 .collect::<alloc::vec::Vec<_>>();

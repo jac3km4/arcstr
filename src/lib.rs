@@ -1,34 +1,34 @@
 //! # Better reference counted strings
 //!
-//! This crate defines [`ArcStr`], a type similar to `Arc<str>`, but with a
+//! This crate defines [`RcStr`], a type similar to `Rc<str>`, but with a
 //! number of new features and functionality. Theres a list of
-//! [benefits][benefits] in the `ArcStr` documentation comment which covers some
+//! [benefits][benefits] in the `RcStr` documentation comment which covers some
 //! of the reasons you might want to use it over other alternatives.
 //!
 //! Additionally, if the `substr` feature is enabled (and it is by default) we
-//! provide a [`Substr`] type which is essentially a `(ArcStr, Range<usize>)`
+//! provide a [`Substr`] type which is essentially a `(RcStr, Range<usize>)`
 //! with better ergonomics and more functionality, which represents a shared
-//! slice of a "parent" `ArcStr`. (Note that in reality, `u32` is used for the
+//! slice of a "parent" `RcStr`. (Note that in reality, `u32` is used for the
 //! index type, but this is not exposed in the API, and can be transparently
 //! changed via a cargo feature).
 //!
-//! [benefits]: struct.ArcStr.html#benefits-of-arcstr-over-arcstr
+//! [benefits]: struct.RcStr.html#benefits-of-rcstr-over-rcstr
 //!
 //! ## Feature overview
 //!
 //! A quick tour of the distinguishing features:
 //!
 //! ```
-//! use arcstr::ArcStr;
+//! use rcstr::RcStr;
 //!
 //! // Works in const:
-//! const MY_ARCSTR: ArcStr = arcstr::literal!("amazing constant");
+//! const MY_ARCSTR: RcStr = rcstr::literal!("amazing constant");
 //! assert_eq!(MY_ARCSTR, "amazing constant");
 //!
-//! // `arcstr::literal!` input can come from `include_str!` too:
+//! // `rcstr::literal!` input can come from `include_str!` too:
 //! # // We have to fake it here, but this has test coverage and such.
 //! # const _: &str = stringify!{
-//! const MY_ARCSTR: ArcStr = arcstr::literal!(include_str!("my-best-files.txt"));
+//! const MY_ARCSTR: RcStr = rcstr::literal!(include_str!("my-best-files.txt"));
 //! # };
 //! ```
 //!
@@ -37,12 +37,12 @@
 //! not only don't allocate any heap memory to instantiate `wow` or any of the
 //! clones, we also don't have to perform any atomic reads or writes.
 //!
-//! [zero-cost]: struct.ArcStr.html#what-does-zero-cost-literals-mean
+//! [zero-cost]: struct.RcStr.html#what-does-zero-cost-literals-mean
 //!
 //! ```
-//! use arcstr::ArcStr;
+//! use rcstr::RcStr;
 //!
-//! let wow: ArcStr = arcstr::literal!("Wow!");
+//! let wow: RcStr = rcstr::literal!("Wow!");
 //! assert_eq!("Wow!", wow);
 //! // This line is probably not something you want to do regularly,
 //! // but causes no extra allocations, nor performs any atomic reads
@@ -50,14 +50,14 @@
 //! let wowzers = wow.clone().clone().clone().clone();
 //!
 //! // At some point in the future, we can get a `&'static str` out of one
-//! // of the literal `ArcStr`s too. Note that this returns `None` for
-//! // dynamically allocated `ArcStr`:
-//! let static_str: Option<&'static str> = ArcStr::as_static(&wowzers);
+//! // of the literal `RcStr`s too. Note that this returns `None` for
+//! // dynamically allocated `RcStr`:
+//! let static_str: Option<&'static str> = RcStr::as_static(&wowzers);
 //! assert_eq!(static_str, Some("Wow!"));
 //! ```
 //!
 //! Of course, this is in addition to the typical functionality you might find a
-//! non-borrowed string type (with the caveat that no way to mutate `ArcStr` is
+//! non-borrowed string type (with the caveat that no way to mutate `RcStr` is
 //! provided intentionally).
 //!
 //! It's an open TODO to update this "feature tour" to include `Substr`.
@@ -73,10 +73,10 @@ pub use core;
 
 #[macro_use]
 mod mac;
-mod arc_str;
 #[cfg(feature = "serde")]
 mod impl_serde;
-pub use arc_str::ArcStr;
+mod rc_str;
+pub use rc_str::RcStr;
 
 #[cfg(feature = "substr")]
 mod substr;
@@ -104,6 +104,6 @@ pub mod _private {
         pub p: *const u8,
         pub a: &'static Arr,
     }
-    pub use crate::arc_str::StaticArcStrInner;
+    pub use crate::rc_str::StaticArcStrInner;
     pub use core::primitive::{str, u8};
 }
